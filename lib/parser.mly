@@ -1,17 +1,17 @@
 %{
 
   open Expr
-  
-%} 
+
+%}
 
 %token IMPORT
-%token PRUNE RECTIFY NORMALIZE
+%token PRUNE RECTIFY NORMALIZE NORMALIZESIM
 %token EQNF LOCMAX
 %token LET COH COMP
-%token OBJ ARROW 
+%token OBJ ARROW
 %token LPAR RPAR LBRACKET RBRACKET
 %token COMMA COLON EQUAL VBAR
-%token <string> IDENT 
+%token <string> IDENT
 %token EOF
 
 %start prog
@@ -22,6 +22,8 @@
 
 %%
 
+
+
 prog:
   | EOF
     { ([],[]) }
@@ -31,11 +33,11 @@ prog:
 raw_cell:
   | ce = cell_expr EOF
     { ce }
-  
+
 import:
   | IMPORT id = IDENT
     { id }
-    
+
 cmd:
   | LET id = IDENT EQUAL cell = cell_expr
     { CellDef (id, cell) }
@@ -49,6 +51,8 @@ cmd:
     { Rectify (List.rev ctx, tm) }
   | NORMALIZE ctx = var_decl+ VBAR tm = tm_expr
     { Normalize (List.rev ctx, tm) }
+  | NORMALIZESIM ctx = var_decl+ VBAR tm = tm_expr
+    { NormalizeSim (List.rev ctx, tm) }
   | LOCMAX ctx = var_decl+
     { LocMax (List.rev ctx) }
 
@@ -66,10 +70,10 @@ tm_expr:
   | LBRACKET cell = cell_expr RBRACKET LPAR args = separated_nonempty_list(COMMA, tm_expr) RPAR
     { CellAppE (cell, List.rev args) }
   | id = IDENT LPAR args = separated_nonempty_list(COMMA, tm_expr) RPAR
-    { DefAppE (id, List.rev args) } 
+    { DefAppE (id, List.rev args) }
   | id = IDENT
     { VarE id }
-    
+
 cell_expr:
   | COH pd = var_decl+ COLON ty = ty_expr
     { CohE (List.rev pd, ty) }
