@@ -304,7 +304,11 @@ let rec check_cmds cmds =
      printf "Valid telescope: %s\n" (print_term_ctx g);
      tc_in_ctx g (tc_infer_tm_expr tm) >>= fun (tm_tm, tm_ty) ->
      printf "Term %s has type %s\n" (print_tm_term tm_tm) (print_ty_term tm_ty);
-     tc_normalize_simpson tm_tm >>= fun tm_normalized ->
+     tc_simple_tm_nf tm_tm >>= fun tm_nf ->
+     tc_simple_ty_nf tm_ty >>= fun ty_nf ->
+     printf "Simple normal form: %s : %s\n" (print_tm_term tm_nf) (print_ty_term ty_nf);
+     printf "Free variables %s\n" (String.concat " " (SS.elements (tm_free_vars tm_nf)));
+     tc_normalize_simpson tm_nf >>= fun tm_normalized ->
      printf "Simpson normalized term: %s\n" (print_tm_term tm_normalized);
      check_cmds ds
   | (LocMax tele :: ds) ->
