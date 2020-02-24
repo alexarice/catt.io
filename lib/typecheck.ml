@@ -113,26 +113,35 @@ let rec tc_pd_kth_tgt k pd =
 let tc_pd_src pd = tc_pd_kth_src ((dim_of_pd pd) - 1) pd
 let tc_pd_tgt pd = tc_pd_kth_tgt ((dim_of_pd pd) - 1) pd
 
-(* Basic normalization (unfold definitions, uniquify pd's *)
-let rec tc_simple_ty_nf ty =
-  match ty with
-  | ObjT -> tc_ok ObjT
-  | ArrT (ty', src, tgt) ->
-     tc_simple_ty_nf ty' >>= fun ty_nf ->
-     tc_simple_tm_nf src >>= fun src_nf ->
-     tc_simple_tm_nf tgt >>= fun tgt_nf ->
-     tc_ok (ArrT (ty_nf, src_nf, tgt_nf))
+let rec tc_traverse_with_int f xs n =
+  match xs with
+  | [] -> tc_ok ([], n)
+  | x :: xs -> f x n >>= fun (y, k) ->
+               tc_traverse_with_int f xs k >>= fun (ys, k') ->
+               tc_ok (y :: ys, k')
 
-and tc_simple_tm_nf tm =
+
+
+(* Basic normalization (unfold definitions, uniquify pd's *)
+let rec tc_simple_ty_nf ty n =
+  match ty with
+  | ObjT -> tc_ok (ObjT, n)
+  | ArrT (ty', src, tgt) ->
+     tc_simple_ty_nf ty' n >>= fun (ty_nf, k) ->
+     tc_simple_tm_nf src k >>= fun (src_nf, k1) ->
+     tc_simple_tm_nf tgt k1 >>= fun (tgt_nf, k2) ->
+     tc_ok (ArrT (ty_nf, src_nf, tgt_nf), k2)
+
+and tc_simple_tm_nf tm n =
   match tm with
-  | VarT id -> tc_ok (VarT id)
+  | VarT id -> tc_ok (VarT id, n)
   | DefAppT (id, args) ->
      tc_lookup_def id >>= fun def ->
      (match def with
       | TCCellDef cell_tm ->
-         tc_traverse (tc_simple_tm_nf) args >>= fun args_nf ->
-         tc_simple_cell_nf cell_tm >>= fun cell_nf ->
-         tc_ok (CellAppT (cell_nf, args_nf))
+         tc_traverse_with_int tc_simple_tm_nf args n >>= fun (args_nf, k) ->
+         tc_simple_cell_nf cell_tm k >>= fun (cell_nf, k1) ->
+         tc_ok (CellAppT (cell_nf, args_nf), k1)
       | TCTermDef (tele, _, term) ->
          (* The order here may be inefficient, but is currently necessary,
           * as normalization will rename all the pasting diagram variables
@@ -141,31 +150,31 @@ and tc_simple_tm_nf tm =
           *)
          let sub = List.combine (List.map fst tele) args in
          let sub_tm = subst_tm sub term in
-         tc_simple_tm_nf sub_tm
+         tc_simple_tm_nf sub_tm n
      )
   | CellAppT (cell, args) ->
-     tc_traverse (tc_simple_tm_nf) args >>= fun args_nf ->
-     tc_simple_cell_nf cell >>= fun cell_nf ->
-     tc_ok (CellAppT (cell_nf, args_nf))
+     tc_traverse_with_int tc_simple_tm_nf args n >>= fun (args_nf, k) ->
+     tc_simple_cell_nf cell k >>= fun (cell_nf, k1) ->
+     tc_ok (CellAppT (cell_nf, args_nf), k1)
 
-and tc_simple_cell_nf cell =
+and tc_simple_cell_nf cell n =
   match cell with
   | CohT (pd, typ) ->
-     tc_uniquify_pd pd >>= fun (pd_nf, s, _) ->
-     tc_simple_ty_nf (subst_ty s typ) >>= fun ty_nf ->
-     tc_ok (CohT (pd_nf, ty_nf))
+     tc_uniquify_pd pd n >>= fun (pd_nf, s, k) ->
+     tc_simple_ty_nf (subst_ty s typ) k >>= fun (ty_nf, k1) ->
+     tc_ok (CohT (pd_nf, ty_nf), k1)
   | CompT (pd, typ) ->
-     tc_uniquify_pd pd >>= fun (pd_nf, s, _) ->
-     tc_simple_ty_nf (subst_ty s typ) >>= fun ty_nf ->
-     tc_ok (CompT (pd_nf, ty_nf))
+     tc_uniquify_pd pd n >>= fun (pd_nf, s, k) ->
+     tc_simple_ty_nf (subst_ty s typ) k >>= fun (ty_nf, k1) ->
+     tc_ok (CompT (pd_nf, ty_nf), k1)
 
-and tc_uniquify_pd pd =
+and tc_uniquify_pd pd n =
   match pd with
   | (id, ObjT) :: [] ->
-     let obj_id = "x0" in
-     tc_ok ((obj_id, ObjT)::[], (id, VarT obj_id)::[], 1)
+     let obj_id = sprintf "x%d" n in
+     tc_ok ((obj_id, ObjT)::[], (id, VarT obj_id)::[], n + 1)
   | (fill_id, fill_typ) :: (tgt_id, tgt_typ) :: pd' ->
-     tc_uniquify_pd pd' >>= fun (upd, sub, k) ->
+     tc_uniquify_pd pd' n >>= fun (upd, sub, k) ->
      let tgt_id' = sprintf "x%d" k in
      let fill_id' = sprintf "x%d" (k+1) in
      let tgt_typ' = subst_ty sub tgt_typ in
@@ -176,13 +185,13 @@ and tc_uniquify_pd pd =
 
 (* Compare types and terms up to simple normalization *)
 let tc_eq_nf_ty ty_a ty_b =
-  tc_simple_ty_nf ty_a >>= fun ty_a_nf ->
-  tc_simple_ty_nf ty_b >>= fun ty_b_nf ->
+  tc_simple_ty_nf ty_a 0 >>= fun (ty_a_nf, _) ->
+  tc_simple_ty_nf ty_b 0 >>= fun (ty_b_nf, _) ->
   tc_ok (ty_a_nf = ty_b_nf)
 
 let tc_eq_nf_tm tm_a tm_b =
-  tc_simple_tm_nf tm_a >>= fun tm_a_nf ->
-  tc_simple_tm_nf tm_b >>= fun tm_b_nf ->
+  tc_simple_tm_nf tm_a 0 >>= fun (tm_a_nf, _) ->
+  tc_simple_tm_nf tm_b 0 >>= fun (tm_b_nf, _) ->
   tc_ok (tm_a_nf = tm_b_nf)
 
 (*
@@ -200,8 +209,8 @@ let rec tc_check_ty t =
 
 and tc_check_tm tm ty =
   tc_infer_tm tm >>= fun (tm', ty') ->
-  tc_simple_ty_nf ty >>= fun ty_a ->
-  tc_simple_ty_nf ty' >>= fun ty_b ->
+  tc_simple_ty_nf ty 0 >>= fun (ty_a, _) ->
+  tc_simple_ty_nf ty' 0 >>= fun (ty_b, _) ->
   if (ty_a = ty_b) then tc_ok tm' else
     let msg = sprintf "The term %s was expected to have type %s,
                        but was inferred to have type %s"
