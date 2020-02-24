@@ -6,50 +6,76 @@ open Typecheck
 open Term
 open Printf
 open List
-
-type 'a option =
-  | None
-  | Some of 'a
-
-let isSome x =
-  match x with
-  | None -> false
-  | Some _ -> true
-
-let ( <&> ) x y =
-  match x with
-  | Some _ -> y
-  | None -> None
-
-let list_join =
-  fold_right (fun a b -> a <&> b)
+open Common
 
 let rec test_comp_term tm =
   match tm with
-  | VarT id -> tc_ok (Some ((id , ObjT) :: []))
+  | VarT id -> tc_ok (((id , ObjT) :: []))
   | DefAppT (_, _) -> tc_fail "can't normalize a def"
   | CellAppT (cell_tm, args) ->
-     tc_traverse test_comp_term args >>= fun args_tested ->
+     tc_traverse test_comp_term args >>= fun _ ->
      (match cell_tm with
       | CohT (_, _) ->
-         tc_ok None
+         tc_fail "Encountered Coherence"
       | CompT (ctx, ty) ->
-         test_comp_type ty >>= fun res ->
-         tc_ok (list_join args_tested (if res then Some ctx else None))
-     ) >>= fun term_tested ->
-     tc_ok (list_join args_tested term_tested)
+         test_comp_type ty >>= fun _ ->
+         tc_ok ctx
+     )
 
 and test_comp_type ty =
   match ty with
-  | ObjT -> tc_ok true
+  | ObjT -> tc_ok ()
   | ArrT (ty, tm1, tm2) ->
-     test_comp_type ty >>= fun ty_tested ->
-     test_comp_term tm1 >>= fun tm1_tested ->
-     test_comp_term tm2 >>= fun tm2_tested ->
-     tc_ok (ty_tested && isSome (tm1_tested <&> tm2_tested))
+     test_comp_type ty >>= fun _ ->
+     test_comp_term tm1 >>= fun _ ->
+     test_comp_term tm2 >>= fun _ ->
+     tc_ok ()
+
+let is_nice_comp ct =
+  match ct with
+  | CohT (_, _) ->
+     tc_fail "Coherences are not compositions"
+  | CompT (_, ty) ->
+     (match ty with
+      | ObjT -> tc_fail "Composition type should be an arrow"
+      | x ->
+         test_comp_type x
+     )
+
+let is_bubble ct =
+  match ct with
+  | CohT _ ->
+     tc_fail "Coherence is not a bubble"
+  | CompT (pd, _) ->
+     tc_pd_src pd >>= fun pd_src ->
+     tc_pd_tgt pd >>= fun pd_tgt ->
+     tc_lift (is_disc_pd pd_src >>== fun _ -> is_disc_pd pd_tgt)
+
+let tc_normalize_disk tm =
+  match tm with
+  | VarT _ -> tc_fail "Not a composition"
+  | DefAppT _ -> tc_fail "can't normalize a def"
+  | CellAppT (ct, args) ->
+     (match ct with
+      | CohT _ -> tc_fail "normalize_disk does not normalize coherences"
+      | CompT (pd ,ty) ->
+         tc_lift (is_disc_pd pd) >>= fun x ->
+         test_comp_type ty >>= fun _ ->
+         if length args != length pd then tc_fail "malformed composition" else
+           tc_ok (assoc x (combine pd args))
+     )
+
+
+
+let tc_normalize_simpson' tm =
+  tc_try_2 (test_comp_term tm)
+    (fun ctx -> printf "is pure comp\n"; tc_ucomp ctx >>= fun (tm, _) -> tc_ok tm)
+    (fun _ -> printf "not pure comp\n"; tc_ok tm)
+
+let rec trans r tm =
+  tc_try_2 (r tm)
+    (fun tm' -> trans r tm')
+    (fun _ -> tc_ok tm)
 
 let tc_normalize_simpson tm =
-  test_comp_term tm >>= fun isPureComp ->
-  match isPureComp with
-  | Some ctx -> printf "is pure comp\n"; tc_ucomp ctx >>= fun (tm, _) -> tc_ok tm
-  | None -> printf "not pure comp\n"; tc_ok tm
+  trans tc_normalize_disk tm
