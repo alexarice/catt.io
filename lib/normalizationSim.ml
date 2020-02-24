@@ -4,7 +4,6 @@
 
 open Typecheck
 open Term
-open Printf
 open List
 open Common
 
@@ -65,17 +64,15 @@ let tc_normalize_disk tm =
            tc_ok (assoc x (combine pd args))
      )
 
-
-
-let tc_normalize_simpson' tm =
-  tc_try_2 (test_comp_term tm)
-    (fun ctx -> printf "is pure comp\n"; tc_ucomp ctx >>= fun (tm, _) -> tc_ok tm)
-    (fun _ -> printf "not pure comp\n"; tc_ok tm)
-
 let rec trans r tm =
   tc_try_2 (r tm)
     (fun tm' -> trans r tm')
     (fun _ -> tc_ok tm)
+
+let ( >+> ) r1 r2 tm =
+  tc_try_2 (r1 tm)
+    (fun tm' -> tc_ok tm')
+    (fun _ -> r2 tm)
 
 let tc_normalize_simpson tm =
   trans tc_normalize_disk tm
