@@ -266,6 +266,10 @@ let app_zip_drop z =
        Succeed (zr, s')
     | ArrT (_, _, _) -> Fail "Malformed pasting diagram"
 
+(* Scan back through a zipper to search for an id *)
+let rec app_zip_scan_back id z =
+  if id = app_zip_head_id z then Succeed z else
+    zipper_move_right z >>== app_zip_scan_back id
 
 (*
  *  A zipper for pasting diagrams w/o arguments
