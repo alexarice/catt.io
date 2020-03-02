@@ -218,13 +218,13 @@ let check_rm b s =
   if b then rm_ok () else rm_fail s
 
 let rec create_iso pd1 pd2 =
-  create_iso' (rev pd1) (rev pd2) []
+  create_iso' (rev pd1) (rev pd2) [] >>= fun l -> tc_ok (rev l)
 
 and create_iso' pd1 pd2 sub =
   match (pd1, pd2) with
   | ([],[]) -> tc_ok sub
   | ((id1,ty1) :: bs, (id2,ty2) :: cs) ->
-     check (sub_all_into_type ty2 sub = ty1) (Printf.sprintf "no iso %s %s %s" (String.concat " " (map (fun (x,y) -> Printf.sprintf "(%s,%s)" x y) sub)) (print_ty_term ty1) (print_ty_term ty2)) >>= fun _ ->
+     check (sub_all_into_type ty2 sub = ty1) (Printf.sprintf "no iso %s %s" (print_ty_term ty1) (print_ty_term ty2)) >>= fun _ ->
      create_iso' bs cs ((id2,id1) :: sub)
   | _ -> tc_fail "pasting diagrams are not the same size"
 
@@ -266,11 +266,13 @@ and applyjoin pd (join : string * (pd_and_args * pd_and_args)) : (pd_and_args li
 
 
 let join_pds pd1 args1 pd2 args2 =
-  tc_pd_tgt pd1 >>= fun pdtgt ->
-  tc_pd_src pd2 >>= fun pdsrc ->
-  create_iso pdtgt pdsrc >>= fun sublist ->
-  filterPdWithJoin (combine pd2 args2) sublist >>= fun joins ->
-  insertJoins (combine pd1 args1) joins
+  rm_lift (tc_pd_tgt pd1) >>=== fun pdtgt ->
+  rm_lift (tc_pd_src pd2) >>=== fun pdsrc ->
+  put (Printf.sprintf "Attempting iso\n%s\n%s" (print_term_ctx pdsrc) (print_term_ctx pdtgt)) >>=== fun _ ->
+  rm_lift (create_iso pdtgt pdsrc) >>=== fun sublist ->
+  put (Printf.sprintf "Got iso %s" (String.concat " " (map (fun (x,y) -> Printf.sprintf "(%s,%s)" x y) sublist))) >>=== fun _ ->
+  rm_lift (filterPdWithJoin (combine pd2 args2) sublist) >>=== fun joins ->
+  rm_lift (insertJoins (combine pd1 args1) joins)
 
 
 
@@ -287,7 +289,7 @@ let try_wall dim z =
           | (CellAppT (ct1, args1)), CellAppT (ct2, args2) ->
              is_nice_comp ct1 >>=== fun (pd1, (tyf, start, _)) ->
              is_nice_comp ct2 >>=== fun (pd2, (_, _, last)) ->
-             rm_lift (join_pds pd1 args1 pd2 args2) >>=== fun pd3a ->
+             join_pds pd1 args1 pd2 args2 >>=== fun pd3a ->
              let (newpd, newargs) = split pd3a in
              rm_lift (tc_check_pd newpd) >>=== fun _ ->
              let newarg = CellAppT (CompT (newpd, ArrT (tyf, start, last)), newargs) in
