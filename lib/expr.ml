@@ -306,10 +306,9 @@ let rec check_cmds cmds =
      printf "Term %s has type %s\n" (print_tm_term tm_tm) (print_ty_term tm_ty);
      tc_simple_tm_nf tm_tm 0 >>= fun (tm_nf, _) ->
      tc_simple_ty_nf tm_ty 0 >>= fun (ty_nf, _) ->
-     printf "Simple normal form: %s : %s\n" (print_tm_term tm_nf) (print_ty_term ty_nf);
-     printf "Free variables %s\n" (String.concat " " (SS.elements (tm_free_vars tm_nf)));
+     printf "Simple normal form:\n%s : %s\n" (print_tm_term tm_nf) (print_ty_term ty_nf);
      tc_normalize_simpson tm_nf >>= fun tm_normalized ->
-     printf "Simpson normalized term: %s\n" (print_tm_term tm_normalized);
+     printf "Simpson normalized term:\n%s\n" (print_tm_term tm_normalized);
      check_cmds ds
   | (LocMax tele :: ds) ->
      printf "-----------------\n";
