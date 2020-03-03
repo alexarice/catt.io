@@ -6,6 +6,7 @@ open Typecheck
 open Term
 open List
 open Common
+open Printf
 
 type reduction = tc_env -> tm_term -> (string * tm_term err)
 
@@ -192,7 +193,7 @@ let rec try_all xs =
 
 
 let try_arg ty dim z (* pd ty args1 ((id, _), arg) *) =
-  put (Printf.sprintf "Trying arg %s" (app_zip_head_id z)) >>=== fun _ ->
+  put (sprintf "Trying arg %s" (app_zip_head_id z)) >>=== fun _ ->
   match app_zip_head_tm z with
   | VarT _ -> rm_fail ""
   | DefAppT _ -> rm_fail ""
@@ -224,7 +225,7 @@ and create_iso' pd1 pd2 sub =
   match (pd1, pd2) with
   | ([],[]) -> tc_ok sub
   | ((id1,ty1) :: bs, (id2,ty2) :: cs) ->
-     check (sub_all_into_type ty2 sub = ty1) (Printf.sprintf "no iso %s %s" (print_ty_term ty1) (print_ty_term ty2)) >>= fun _ ->
+     check (sub_all_into_type ty2 sub = ty1) (sprintf "no iso %s %s" (print_ty_term ty1) (print_ty_term ty2)) >>= fun _ ->
      create_iso' bs cs ((id2,id1) :: sub)
   | _ -> tc_fail "pasting diagrams are not the same size"
 
@@ -233,16 +234,18 @@ and sub_all_into_type (ty : ty_term) sub =
 
 let rec filterPdWithJoin pd2a (sublist : (string * string) list) =
   match pd2a with
-  | [] -> tc_fail "not a valid pasting diagram"
-  | _ :: [] -> tc_ok []
-  | _ :: _ :: [] -> tc_fail "not a valid pasting diagram"
+  | [] -> rm_fail "not a valid pasting diagram"
+  | _ :: [] -> rm_ok []
+  | _ :: _ :: [] -> rm_fail "not a valid pasting diagram"
   | ((fillid, fillty), fillarg) :: ((tgtid, tgtty), tgtarg) :: ((joinid, jointy), joinarg) :: rest ->
-     if mem_assoc fillid sublist then filterPdWithJoin rest sublist else
-       tc_try_2 (tc_assoc joinid sublist) tc_ok (fun _ -> tc_ok joinid) >>= fun joinidsub ->
+     if mem_assoc fillid sublist then filterPdWithJoin (((joinid,jointy), joinarg) :: rest) sublist else
+       (rm_assoc joinid sublist <|> rm_ok joinid) >>=== fun joinidsub ->
        let filltysub = sub_all_into_type fillty sublist in
        let tgttysub = sub_all_into_type tgtty sublist in
-       filterPdWithJoin (((joinid, jointy), joinarg) :: rest) sublist >>= fun restdone ->
-       tc_ok ((joinidsub, (((fillid, filltysub), fillarg), ((tgtid, tgttysub), tgtarg))) :: restdone)
+       filterPdWithJoin (((joinid, jointy), joinarg) :: rest) sublist >>=== fun restdone ->
+       let join = (joinidsub, (((fillid, filltysub), fillarg), ((tgtid, tgttysub), tgtarg))) in
+       put (sprintf "(%s,(%s,%s))" joinidsub fillid tgtid) >>=== fun _ ->
+       rm_ok (join :: restdone)
 
 let rec fold_right_m f (xs : 'b list) a =
   match xs with
@@ -268,16 +271,16 @@ and applyjoin pd (join : string * (pd_and_args * pd_and_args)) : (pd_and_args li
 let join_pds pd1 args1 pd2 args2 =
   rm_lift (tc_pd_tgt pd1) >>=== fun pdtgt ->
   rm_lift (tc_pd_src pd2) >>=== fun pdsrc ->
-  put (Printf.sprintf "Attempting iso\n%s\n%s" (print_term_ctx pdsrc) (print_term_ctx pdtgt)) >>=== fun _ ->
+  put (sprintf "Attempting iso\n%s\n%s" (print_term_ctx pdsrc) (print_term_ctx pdtgt)) >>=== fun _ ->
   rm_lift (create_iso pdtgt pdsrc) >>=== fun sublist ->
-  put (Printf.sprintf "Got iso %s" (String.concat " " (map (fun (x,y) -> Printf.sprintf "(%s,%s)" x y) sublist))) >>=== fun _ ->
-  rm_lift (filterPdWithJoin (combine pd2 args2) sublist) >>=== fun joins ->
+  put (sprintf "Got iso %s" (String.concat " " (map (fun (x,y) -> sprintf "(%s,%s)" x y) sublist))) >>=== fun _ ->
+  filterPdWithJoin (combine pd2 args2) sublist >>=== fun joins ->
   rm_lift (insertJoins (combine pd1 args1) joins)
 
 
 
 let try_wall dim z =
-  put (Printf.sprintf "Trying wall %s" (app_zip_head_id z)) >>=== fun _ ->
+  put (sprintf "Trying wall %s" (app_zip_head_id z)) >>=== fun _ ->
   match z with
   | (((id, ty), _), a :: b :: c :: after, before) ->
      check_rm (dim_of ty = dim - 1) "wrong dimension for wall" >>=== fun _ ->
