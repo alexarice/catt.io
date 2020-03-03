@@ -118,7 +118,7 @@ let tc_assoc item al =
   | None -> tc_fail "assoc failed"
 
 let normalize_disk tm =
-  put "Trying normalize disk...\n" >>=== fun _ ->
+  put "\nTrying normalize disk..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
@@ -129,7 +129,10 @@ let normalize_disk tm =
          all_lift (is_disc_pd pd) >>=== fun x ->
          test_comp_type ty >>=== fun _ ->
          if length args != length pd then rm_fail "malformed composition" else
-           rm_assoc x (combine pd args)
+           rm_assoc x (combine pd args) >>=== fun res ->
+           put ("Success, reduced to:") >>=== fun _ ->
+           put (print_tm_term res) >>=== fun _ ->
+           rm_ok res
      )
 
 let rec sub_into_type x y ty =
@@ -195,22 +198,25 @@ let rec try_all xs =
 let try_arg ty dim z (* pd ty args1 ((id, _), arg) *) =
   put (sprintf "Trying arg %s" (app_zip_head_id z)) >>=== fun _ ->
   match app_zip_head_tm z with
-  | VarT _ -> rm_fail ""
-  | DefAppT _ -> rm_fail ""
+  | VarT _ -> rm_fail "Cannot pop variable"
+  | DefAppT _ -> rm_fail "Cannot normalize definition"
   | CellAppT (ct, args) ->
      is_nice_comp ct >>=== fun (pd2, _) ->
      rm_lift (merge_pd dim z pd2 args) >>=== fun (newpd, newargs) ->
      rm_ok (CellAppT ((CompT (newpd, ty)), newargs))
 
 let bubble_pop tm =
-  put "Trying bubble pop" >>=== fun _ ->
+  put "\nTrying bubble pop..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
   | CellAppT (ct, args) ->
      is_nice_comp ct >>=== fun (pd, (x,a,b)) ->
      all_lift (get_all_zippers (combine pd args)) >>=== fun zs ->
-     try_all (map (try_arg (ArrT (x,a,b)) (dim_of_pd pd)) zs)
+     try_all (map (try_arg (ArrT (x,a,b)) (dim_of_pd pd)) zs) >>=== fun res ->
+     put ("Success, reduced to:") >>=== fun _ ->
+     put (print_tm_term res) >>=== fun _ ->
+     rm_ok res
 
 let check b s =
   if b then tc_ok () else tc_fail s
@@ -308,14 +314,17 @@ let try_wall dim z =
   | _ -> rm_fail "not a wall"
 
 let wall_destruction tm =
-  put "Trying wall destruction" >>=== fun _ ->
+  put "\nTrying wall destruction..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
   | CellAppT (ct, args) ->
      is_nice_comp ct >>=== fun (pd, _) ->
      all_lift (get_all_zippers (combine pd args)) >>=== fun zs ->
-     try_all (map (try_wall (dim_of_pd pd)) zs)
+     try_all (map (try_wall (dim_of_pd pd)) zs) >>=== fun res ->
+     put ("Success, reduced to:") >>=== fun _ ->
+     put (print_tm_term res) >>=== fun _ ->
+     rm_ok res
 
 let tc_normalize_simpson tm : tm_term tcm =
   let reduction = ref_trans_close (normalize_disk >+>
