@@ -307,7 +307,7 @@ let rec check_cmds cmds =
      tc_simple_tm_nf tm_tm 0 >>= fun (tm_nf, _) ->
      tc_simple_ty_nf tm_ty 0 >>= fun (ty_nf, _) ->
      printf "Simple normal form:\n%s : %s\n" (print_tm_term tm_nf) (print_ty_term ty_nf);
-     tc_normalize_simpson tm_nf >>= fun tm_normalized ->
+     tc_in_ctx g (normalize_simpson tm_nf) >>= fun tm_normalized ->
      printf "Simpson normalized term:\n%s\n" (print_tm_term tm_normalized);
      check_cmds ds
   | (LocMax tele :: ds) ->

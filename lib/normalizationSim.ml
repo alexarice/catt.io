@@ -39,6 +39,8 @@ let rm_ok (x : 'a) : 'a rm =
 let rm_fail (s : string) : 'a rm =
   fun _ -> ([s], Nothing)
 
+let rm_in_ctx (c : ctx) (m : 'a rm) : 'a rm = fun env -> m { env with gma = c }
+
 let rec rm_traverse (f : 'a -> 'b rm) (xs : 'a list) : 'b list rm =
   match xs with
   | [] -> rm_ok []
@@ -326,10 +328,50 @@ let wall_destruction tm =
      put (print_tm_term res) >>=== fun _ ->
      rm_ok res
 
-let tc_normalize_simpson tm : tm_term tcm =
-  let reduction = ref_trans_close (normalize_disk >+>
-                                     bubble_pop >+>
-                                     wall_destruction) in
-  run_reduction reduction tm >>= fun (output, tm') ->
+let rec normalize_type (r : tm_term -> tm_term rm) (ty : ty_term) : ty_term rm =
+  put (sprintf "Normalizing type %s" (print_ty_term ty)) >>=== fun _ ->
+  match ty with
+  | ObjT -> put ("Type is trivial") >>=== fun _ -> rm_ok ObjT
+  | ArrT (ty1, src, tgt) ->
+     normalize_type r ty1 >>=== fun tyn ->
+     r src >>=== fun srcn ->
+     r tgt >>=== fun tgtn ->
+     let res = ArrT (tyn, srcn, tgtn) in
+     rm_lift (tc_check_ty res) >>=== fun _ ->
+     put (sprintf "Type normalized to %s" (print_ty_term res)) >>=== fun _ ->
+     rm_ok res
+
+let simpson_top_reduction =
+  ref_trans_close (normalize_disk >+>
+                     bubble_pop >+>
+                     wall_destruction)
+
+let rec simpson_reduction (tm : tm_term) : tm_term rm =
+  put (sprintf "Reducing term:\n%s" (print_tm_term tm)) >>=== fun _ ->
+  match tm with
+  | VarT _ ->
+     put "Variables are fully reduced" >>=== fun _ ->
+     rm_ok tm
+  | DefAppT (_, _) -> rm_fail "Definitions cannot be normalized"
+  | CellAppT (ct, args) ->
+     put "\nReducing arguments:" >>=== fun _ ->
+     rm_traverse simpson_reduction args >>=== fun argsn ->
+     put "\nReducing top term, starting with type" >>=== fun _ ->
+     (match ct with
+      | CohT (ctx, ty) ->
+         rm_in_ctx ctx (normalize_type simpson_reduction ty) >>=== fun tyn ->
+         rm_ok (CohT (ctx, tyn))
+      | CompT (ctx, ty) ->
+         rm_in_ctx ctx (normalize_type simpson_reduction ty) >>=== fun tyn ->
+         rm_ok (CompT (ctx, tyn))
+     ) >>=== fun ctn ->
+     let partialTerm = CellAppT (ctn, argsn) in
+     put "\nType check generated term" >>=== fun _ ->
+     rm_lift (tc_infer_tm partialTerm) >>=== fun _ ->
+     put "\nApply normalization to top term" >>=== fun _ ->
+     simpson_top_reduction partialTerm
+
+let normalize_simpson tm : tm_term tcm =
+  run_reduction simpson_reduction tm >>= fun (output, tm') ->
   Printf.printf "%s\n" (String.concat "\n" output);
   tc_ok tm'
