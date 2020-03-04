@@ -7,55 +7,12 @@ open Term
 open List
 open Common
 open Printf
+open ReductionMonad
 
-type reduction = tc_env -> tm_term -> (string * tm_term err)
-
-type 'a maybe = Some of 'a | Nothing
-
-type 'a rm = tc_env -> (string list * 'a maybe)
-
-let prepend_output (o : string list) (r : 'a rm) : 'a rm = fun env ->
-  let (o2, ans) = r env in (o @ o2, ans)
-
-let ( >>=== ) (red : 'a rm) (f : 'a -> 'b rm) : 'b rm = fun env ->
-  match red env with
-  | (output, Some x) -> prepend_output output (f x) env
-  | (output, Nothing) -> (output, Nothing)
-
-let rm_lift (a : 'a tcm) : 'a rm = fun env ->
-  match a env with
-  | Succeed x -> ([], Some x)
-  | Fail s -> ([s], Nothing)
-
-let all_lift (a : 'a err) : 'a rm =
-  rm_lift (tc_lift a)
-
-let put (s : string) : unit rm =
-  fun _ -> ([s], Some ())
-
-let rm_ok (x : 'a) : 'a rm =
-  fun _ -> ([], Some x)
-
-let rm_fail (s : string) : 'a rm =
-  fun _ -> ([s], Nothing)
-
-let rm_in_ctx (c : ctx) (m : 'a rm) : 'a rm = fun env -> m { env with gma = c }
-
-let rec rm_traverse (f : 'a -> 'b rm) (xs : 'a list) : 'b list rm =
-  match xs with
-  | [] -> rm_ok []
-  | y :: ys ->
-     f y >>=== fun z ->
-     rm_traverse f ys >>=== fun zs ->
-     rm_ok (z :: zs)
-
-let ( <|> ) (r1 : 'a rm) (r2 : 'a rm) : 'a rm = fun env ->
-  match r1 env with
-  | (output, Some tm) -> (output, Some tm)
-  | (output, Nothing) -> prepend_output output r2 env
-
-let ( >+> ) (r1 : 'a -> 'b rm) (r2: 'a -> 'b rm) (tm : 'a) : 'b rm =
-  r1 tm <|> r2 tm
+let tc_assoc item al =
+  match assoc_opt item al with
+  | Some y -> tc_ok y
+  | None -> tc_fail "assoc failed"
 
 let rec ref_trans_close (r: 'a -> 'a rm) (tm : 'a) : 'a rm = fun env ->
   match r tm env with
@@ -109,18 +66,8 @@ let is_bubble pd =
            is_disc_pd pd_tgt >>== fun var2 ->
            Succeed (var1, var2))
 
-let rm_assoc item al =
-  match assoc_opt item al with
-  | Some y -> rm_ok y
-  | None -> rm_fail "assoc failed"
-
-let tc_assoc item al =
-  match assoc_opt item al with
-  | Some y -> tc_ok y
-  | None -> tc_fail "assoc failed"
-
-let normalize_disk tm =
-  put "\nTrying normalize disk..." >>=== fun _ ->
+let disk_removal tm =
+  put "\nTrying disk removal..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
@@ -190,13 +137,6 @@ and get_sub_list zx z2a y b =
      Succeed ((app_zip_head_id z2a, app_zip_head_id zx) :: (b, y) :: xs)
   | _ -> Fail "oh no"
 
-let rec try_all xs =
-  match xs with
-  | [] -> rm_fail "No success\n"
-  | y :: ys ->
-     y <|> try_all ys
-
-
 let try_arg ty dim z (* pd ty args1 ((id, _), arg) *) =
   put (sprintf "Trying arg %s" (app_zip_head_id z)) >>=== fun _ ->
   match app_zip_head_tm z with
@@ -207,8 +147,8 @@ let try_arg ty dim z (* pd ty args1 ((id, _), arg) *) =
      rm_lift (merge_pd dim z pd2 args) >>=== fun (newpd, newargs) ->
      rm_ok (CellAppT ((CompT (newpd, ty)), newargs))
 
-let bubble_pop tm =
-  put "\nTrying bubble pop..." >>=== fun _ ->
+let grafting tm =
+  put "\nTrying grafting..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
@@ -315,8 +255,8 @@ let try_wall dim z =
 
   | _ -> rm_fail "not a wall"
 
-let wall_destruction tm =
-  put "\nTrying wall destruction..." >>=== fun _ ->
+let fusion tm =
+  put "\nTrying fusion..." >>=== fun _ ->
   match tm with
   | VarT _ -> rm_fail "Not a composition"
   | DefAppT _ -> rm_fail "can't normalize a def"
@@ -342,9 +282,9 @@ let rec normalize_type (r : tm_term -> tm_term rm) (ty : ty_term) : ty_term rm =
      rm_ok res
 
 let simpson_top_reduction =
-  ref_trans_close (normalize_disk >+>
-                     bubble_pop >+>
-                     wall_destruction)
+  ref_trans_close (disk_removal >+>
+                     grafting >+>
+                     fusion)
 
 let rec simpson_reduction (tm : tm_term) : tm_term rm =
   put (sprintf "Reducing term:\n%s" (print_tm_term tm)) >>=== fun _ ->
