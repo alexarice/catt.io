@@ -5,7 +5,7 @@
 %}
 
 %token IMPORT
-%token PRUNE RECTIFY NORMALIZE NORMALIZESIM
+%token PRUNE RECTIFY NORMALIZE NORMALIZESIM NORMALIZESPLIT
 %token EQNF LOCMAX
 %token LET COH COMP
 %token OBJ ARROW
@@ -53,6 +53,8 @@ cmd:
     { Normalize (List.rev ctx, tm) }
   | NORMALIZESIM ctx = var_decl+ VBAR tm = tm_expr
     { NormalizeSim (List.rev ctx, tm) }
+  | NORMALIZESPLIT ctx = var_decl+
+    { NormalizeSplit (List.rev ctx)}
   | LOCMAX ctx = var_decl+
     { LocMax (List.rev ctx) }
 

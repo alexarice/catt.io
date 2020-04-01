@@ -21,6 +21,8 @@ let err_try m case_ok case_fail =
   | Fail s -> case_fail s
   | Succeed a -> case_ok a
 
+let ($) f g x = f (g x)
+
 (* Simple list zipper routines for manipulating pd's *)
 type 'a zipper = 'a * ('a list) * ('a list)
 

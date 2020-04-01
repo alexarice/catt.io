@@ -6,6 +6,7 @@ open Term
 open Typecheck
 open Normalization
 open NormalizationSim
+open NormalizationSplit
 open Printf
 
 (* User Expressions *)
@@ -211,6 +212,7 @@ type cmd =
   | Rectify of tele * tm_expr
   | Normalize of tele * tm_expr
   | NormalizeSim of tele * tm_expr
+  | NormalizeSplit of tele
   | LocMax of tele
 
 (*
@@ -309,6 +311,16 @@ let rec check_cmds cmds =
      printf "Simple normal form:\n%s : %s\n" (print_tm_term tm_nf) (print_ty_term ty_nf);
      tc_in_ctx g (normalize_simpson tm_nf) >>= fun tm_normalized ->
      printf "Simpson normalized term:\n%s\n" (print_tm_term tm_normalized);
+     check_cmds ds
+  | (NormalizeSplit tele :: ds) ->
+     printf "-----------------\n";
+     printf "Split Normalizing\n";
+     tc_check_tele tele >>= fun pd ->
+     printf "Valid telescope: %s\n" (print_term_ctx pd);
+     tc_check_pd pd >>= fun _ ->
+     printf "Valid Pasting diagram\n";
+     to_split_form pd >>= fun split_form ->
+     printf "Split normalized term:\n%s\n" (print_top_form split_form);
      check_cmds ds
   | (LocMax tele :: ds) ->
      printf "-----------------\n";
