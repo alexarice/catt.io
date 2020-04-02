@@ -15,6 +15,7 @@ rule token = parse
   | "rectify"    { RECTIFY }
   | "normalize"  { NORMALIZE }
   | "normalizeSim" { NORMALIZESIM }
+  | "normalizeSplit" { NORMALIZESPLIT }
   | "import"     { IMPORT }
   | "->"         { ARROW }
   | "*"          { OBJ }
