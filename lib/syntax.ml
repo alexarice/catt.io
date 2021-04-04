@@ -415,9 +415,14 @@ let rec apply_sub sub t =
   | HomT (c, s, t) -> HomT (apply_sub sub c, apply_sub sub s, apply_sub sub t)
   | t -> t
 
+let rec dim_ty ty =
+  match ty with
+  | HomT (c,_,_) -> dim_ty c + 1
+  | _ -> 0
+
 let rec type_linearity t =
   match t with
-  | HomT(c, VarT _, VarT _) -> type_linearity c + 1
+  | HomT(c, VarT _, VarT _) -> dim_ty c
   | HomT(c, _, _) -> type_linearity c
   | _ -> -1
 
@@ -461,11 +466,6 @@ let rec get_redex xs =
 (* let create_insertion_sub pd redex_path ins_type ins_pd =
  *   let redex_depth = length redex_path in
  *   let offset = Pd.size ins_pd - 2 * redex_depth *)
-
-let rec dim_ty ty =
-  match ty with
-  | HomT (c,_,_) -> dim_ty c + 1
-  | _ -> 0
 
 let path_from_term_type tm ty path =
   let pl = length path in
